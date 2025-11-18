@@ -8,13 +8,12 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-
 # Define and parse user input arguments
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', help='Path to YOLO model file (example: "runs/detect/train/weights/best.pt")',
                     required=True)
 parser.add_argument('--source', help='Image source, can be image file ("test.jpg"), \
-                    image folder ("test_dir"), video file ("testvid.mp4"), index of USB camera ("usb0"), or index of Picamera ("picamera0")', 
+                    image folder ("test_dir"), video file ("testvid.mp4"), index of USB camera ("usb0"), or index of Picamera ("picamera0")',
                     required=True)
 parser.add_argument('--thresh', help='Minimum confidence threshold for displaying detected objects (example: "0.4")',
                     default=0.5)
@@ -23,15 +22,18 @@ parser.add_argument('--resolution', help='Resolution in WxH to display inference
                     default=None)
 parser.add_argument('--output', help='Name of output video file (default: "output_with_detections.avi")',
                     default='output_with_detections.avi')
+parser.add_argument('--csv', help='Name of CSV file for detections (default: "all_detections.csv")',
+                    default='all_detections.csv')
 
 args = parser.parse_args()
 
 # Parse user inputs
 model_path = args.model
 img_source = args.source
-min_thresh = args.thresh
+min_thresh = float(args.thresh)
 user_res = args.resolution
 output_filename = args.output
+csv_filename = args.csv
 
 # Check if model file exists and is valid
 if (not os.path.exists(model_path)):
@@ -43,8 +45,8 @@ model = YOLO(model_path, task='detect')
 labels = model.names
 
 # Parse input to determine if image source is a file, folder, video, or USB camera
-img_ext_list = ['.jpg','.JPG','.jpeg','.JPEG','.png','.PNG','.bmp','.BMP']
-vid_ext_list = ['.avi','.mov','.mp4','.mkv','.wmv']
+img_ext_list = ['.jpg', '.JPG', '.jpeg', '.JPEG', '.png', '.PNG', '.bmp', '.BMP']
+vid_ext_list = ['.avi', '.mov', '.mp4', '.mkv', '.wmv']
 
 if os.path.isdir(img_source):
     source_type = 'folder'
@@ -84,10 +86,10 @@ elif source_type == 'folder':
         if file_ext in img_ext_list:
             imgs_list.append(file)
 elif source_type == 'video' or source_type == 'usb':
-    if source_type == 'video': 
+    if source_type == 'video':
         cap_arg = img_source
         cap = cv2.VideoCapture(cap_arg)
-    elif source_type == 'usb': 
+    elif source_type == 'usb':
         cap_arg = usb_idx
         cap = cv2.VideoCapture(cap_arg, cv2.CAP_DSHOW)  # DirectShow für bessere OBS Virtual Camera Kompatibilität
 
@@ -102,6 +104,7 @@ elif source_type == 'video' or source_type == 'usb':
 
 elif source_type == 'picamera':
     from picamera2 import Picamera2
+
     if not user_res:
         print('ERROR: Must specify --resolution for Picamera.')
         sys.exit(0)
@@ -119,14 +122,21 @@ if source_type in ['video', 'usb', 'picamera']:
             fps = 30.0
     else:
         fps = 30.0
-    
+
     fourcc = cv2.VideoWriter_fourcc(*'MJPG')
     video_writer = cv2.VideoWriter(output_filename, fourcc, fps, (resW, resH))
     print(f'Video output will be saved to: {output_filename}')
 
+# Initialize CSV file for detections
+csv_file = open(csv_filename, 'w', newline='')
+csv_writer = csv.writer(csv_file)
+csv_writer.writerow(
+    ['frame_id', 'filename', 'class_name', 'class_id', 'confidence', 'xmin', 'ymin', 'xmax', 'ymax', 'width', 'height'])
+print(f'Detection data will be saved to: {csv_filename}')
+
 # Set bounding box colors (using the Tableu 10 color scheme)
-bbox_colors = [(164,120,87), (68,148,228), (93,97,209), (178,182,133), (88,159,106), 
-              (96,202,231), (159,124,168), (169,162,241), (98,118,150), (172,176,184)]
+bbox_colors = [(164, 120, 87), (68, 148, 228), (93, 97, 209), (178, 182, 133), (88, 159, 106),
+               (96, 202, 231), (159, 124, 168), (169, 162, 241), (98, 118, 150), (172, 176, 184)]
 
 # Initialize control and status variables
 avg_frame_rate = 0
@@ -144,35 +154,48 @@ try:
         t_start = time.perf_counter()
 
         # Load frame from image source
+        current_filename = ''
         if source_type == 'image' or source_type == 'folder':
             if img_count >= len(imgs_list):
                 print('All images have been processed. Exiting program.')
                 break
             img_filename = imgs_list[img_count]
+            current_filename = os.path.basename(img_filename)
             frame = cv2.imread(img_filename)
             img_count = img_count + 1
-        
+
         elif source_type == 'video':
             ret, frame = cap.read()
             if not ret:
                 print('Reached end of the video file. Exiting program.')
                 break
-        
+            current_filename = f'frame_{img_count:05d}'
+            img_count = img_count + 1
+
         elif source_type == 'usb':
             ret, frame = cap.read()
             if (frame is None) or (not ret):
-                print('Unable to read frames from the camera. This indicates the camera is disconnected or not working. Exiting program.')
+                print(
+                    'Unable to read frames from the camera. This indicates the camera is disconnected or not working. Exiting program.')
                 break
+            current_filename = f'usb_frame_{img_count:05d}'
+            img_count = img_count + 1
 
         elif source_type == 'picamera':
             frame = cap.capture_array()
             if (frame is None):
-                print('Unable to read frames from the Picamera. This indicates the camera is disconnected or not working. Exiting program.')
+                print(
+                    'Unable to read frames from the Picamera. This indicates the camera is disconnected or not working. Exiting program.')
                 break
+            current_filename = f'picam_frame_{img_count:05d}'
+            img_count = img_count + 1
 
         # Resize frame to desired display resolution
         if resize == True:
-            frame = cv2.resize(frame,(resW,resH))
+            frame = cv2.resize(frame, (resW, resH))
+
+        # Get frame dimensions
+        img_height, img_width = frame.shape[:2]
 
         # Run inference on frame
         results = model(frame, verbose=False)
@@ -198,29 +221,39 @@ try:
             # Get bounding box confidence
             conf = detections[i].conf.item()
 
-            # Draw box if confidence threshold is high enough
-            if conf > 0.5:
+            # Draw box and save to CSV if confidence threshold is high enough
+            if conf > min_thresh:
+                # Calculate bounding box width and height
+                bbox_width = xmax - xmin
+                bbox_height = ymax - ymin
 
+                # Write detection to CSV
+                csv_writer.writerow([img_count - 1, current_filename, classname, classidx,
+                                     f'{conf:.4f}', xmin, ymin, xmax, ymax, bbox_width, bbox_height])
+
+                # Draw bounding box on frame
                 color = bbox_colors[classidx % 10]
-                cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), color, 2)
+                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
 
-                label = f'{classname}: {int(conf*100)}%'
+                label = f'{classname}: {int(conf * 100)}%'
                 labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                 label_ymin = max(ymin, labelSize[1] + 10)
-                cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), color, cv2.FILLED)
-                cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+                cv2.rectangle(frame, (xmin, label_ymin - labelSize[1] - 10),
+                              (xmin + labelSize[0], label_ymin + baseLine - 10), color, cv2.FILLED)
+                cv2.putText(frame, label, (xmin, label_ymin - 7), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
                 # Basic example: count the number of objects in the image
                 object_count = object_count + 1
 
         # Calculate and draw framerate (if using video, USB, or Picamera source)
         if source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
-            cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10,20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2)
-        
+            cv2.putText(frame, f'FPS: {avg_frame_rate:0.2f}', (10, 20), cv2.FONT_HERSHEY_SIMPLEX, .7, (0, 255, 255), 2)
+
         # Display detection results
-        cv2.putText(frame, f'Number of objects: {object_count}', (10,40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0,255,255), 2)
+        cv2.putText(frame, f'Number of objects: {object_count}', (10, 40), cv2.FONT_HERSHEY_SIMPLEX, .7, (0, 255, 255),
+                    2)
         cv2.imshow(window_name, frame)
-        
+
         # Write frame to output video if applicable
         if video_writer is not None:
             video_writer.write(frame)
@@ -235,19 +268,19 @@ try:
             key = cv2.waitKey()
         elif source_type == 'video' or source_type == 'usb' or source_type == 'picamera':
             key = cv2.waitKey(5)
-        
+
         if key == ord('q') or key == ord('Q'):
             print('Quit key pressed. Exiting program.')
             break
         elif key == ord('s') or key == ord('S'):
             cv2.waitKey()
         elif key == ord('p') or key == ord('P'):
-            cv2.imwrite('capture.png',frame)
+            cv2.imwrite('capture.png', frame)
             print('Screenshot saved as capture.png')
-        
+
         # Calculate FPS for this frame
         t_stop = time.perf_counter()
-        frame_rate_calc = float(1/(t_stop - t_start))
+        frame_rate_calc = float(1 / (t_stop - t_start))
 
         # Append FPS result to frame_rate_buffer (for finding average FPS over multiple frames)
         if len(frame_rate_buffer) >= fps_avg_len:
@@ -265,7 +298,7 @@ except KeyboardInterrupt:
 finally:
     # Clean up - this block always executes
     print(f'\nAverage pipeline FPS: {avg_frame_rate:.2f}')
-    
+
     # Release video capture
     if source_type == 'video' or source_type == 'usb':
         cap.release()
@@ -273,12 +306,16 @@ finally:
     elif source_type == 'picamera':
         cap.stop()
         print('Picamera stopped.')
-    
+
     # Release video writer
     if video_writer is not None:
         video_writer.release()
         print(f'Video saved successfully: {output_filename}')
-    
+
+    # Close CSV file
+    csv_file.close()
+    print(f'Detection data saved successfully: {csv_filename}')
+
     # Destroy all OpenCV windows
     cv2.destroyAllWindows()
     print('All windows closed. Program terminated cleanly.')
