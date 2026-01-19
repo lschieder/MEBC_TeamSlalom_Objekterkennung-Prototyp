@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+/labels/
+/images/
+/images_v1/
+/images_v2/
+/images_v1/
+/labels_v1/
+/images_v1/
+/labels_v2/
