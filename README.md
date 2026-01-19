@@ -33,17 +33,16 @@ python -c "import torch; print(torch.cude.get_device_name(0))"
 
 ### Labels erstellen
 
-Zb. Mit Labelstudio
+Zb. Mit Labelstudio oder **Auto-Labeling** (siehe unten).
 
 ### Datenstruktur vorbereiten
 
 Quelle: `curl --output train_val_split.py https://raw.githubusercontent.com/EdjeElectronics/Train-and-Deploy-YOLO-Models/refs/heads/main/utils/train_val_split.py`
 
-
-
+**Wichtig:** `--datapath` muss auf den Ordner zeigen, der `images` und `labels` enthält (nicht auf `images` selbst).
 
 ```bash
-python train_val_split.py --datapath="C:\\Pfad\\zu\\deinen\\Daten" --train_pct=.8
+python train_val_split.py --datapath="C:\Objectdetection\Objectdetection" --train_pct=.8
 ```
 
 ### data.yaml für das Training anlegen
@@ -51,16 +50,18 @@ python train_val_split.py --datapath="C:\\Pfad\\zu\\deinen\\Daten" --train_pct=.
 Öffne Texteditor, erstelle und passe diese Datei an:
 
 ```yml
-path: C:\Users\<username>\Documents\yolo\data
+path: C:\Objectdetection\Objectdetection\data
 train: train\images
 val: validation\images
-nc: 5
-names: ["class1", "class2", "class3", "class4", "class5"]
+nc: 2
+names: ["EndBoje", "KursBoje"]
 ```
 
 
 
-### Training starten
+### Training starten (mit GPU)
+
+Stelle sicher, dass PyTorch mit CUDA installiert ist (siehe oben).
 
 ```python
 yolo detect train data=data.yaml model=yolo11s.pt epochs=60 imgsz=640
@@ -68,9 +69,34 @@ yolo detect train data=data.yaml model=yolo11s.pt epochs=60 imgsz=640
 
 Das Modell wird dann als pt datei gespeichert bzw die weights unter `Objectdetection\runs\detect\train\weigts`
 
+### Inference / Live-Erkennung
 
+Anwenden des Modells auf Video, Bilder oder Webcam (z.B. OBS Virtual Camera).
 
+```bash
+python yolo_detect.py --model runs/detect/train2/weights/best.pt --source usb0
+```
+*   `--source usb0`: Webcam / OBS Virtual Camera
+*   `--source video.mp4`: Videodatei
+*   `--output mein_video.avi`: Name der Ausgabedatei (optional)
 
+### Auto-Labeling & Validierung
+
+Neue Bilder automatisch mit einem existierenden Modell labeln.
+
+**1. Automatisch Labeln:**
+Erstellt .txt Files für einen Ordner voller Bilder.
+
+```bash
+python auto_label.py --model runs/detect/train2/weights/best.pt --source "C:\Pfad\Bilder" --output "C:\Pfad\Labels"
+```
+
+**2. Visuelle Überprüfung:**
+Zeichnet Boxen in Bilder ein zur schnellen Kontrolle.
+
+```bash
+python visualize_labels.py --images "C:\Pfad\Bilder" --labels "C:\Pfad\Labels" --output "C:\Check_Output"
+```
 
 ### Analyse der Ergebnise
 
@@ -80,20 +106,10 @@ Die normalisierte Confusion Matrix zeigt die Leistung eines Klassifikationsmodel
 
 
 
+![](C:\Users\lauri\AppData\Roaming\marktext\images\2025-10-28-16-41-46-results.png)
 
 
-![](C:\Users\lauri\AppData\Roaming\marktext\images\2025-10-28-16-38-10-results.png)
 
-#### Trainingsverlauf
+Die Grafik zeigt die Trainingsverläufe eines YOLO-Objekterkennungsmodells über etwa 60 Epochen, wobei alle Loss-Metriken (box_loss, cls_loss, dfl_loss) sowohl für Training als auch Validierung kontinuierlich sinken und sich stabilisieren. Die Evaluationsmetriken (Precision, Recall, mAP50, mAP50-95) steigen während des Trainings konstant an und erreichen gegen Ende Werte nahe 1.0 für Precision und Recall sowie etwa 0.95-1.0 für mAP50, was auf ein erfolgreiches Training mit guter Konvergenz hinweis
 
-Die **Loss-Metriken** zeigen einen deutlichen Abwärtstrend über die gesamte Trainingsdauer. Die box_loss fällt von anfänglich 0.9 auf etwa 0.38, die cls_loss reduziert sich dramatisch von über 5.0 auf unter 0.5, und die dfl_loss sinkt von 1.15 auf etwa 0.80. Die Validierungs-Losses folgen einem ähnlichen Muster, wobei val/box_loss von 0.73 auf 0.51, val/cls_loss von 5.0 auf 0.5 und val/dfl_loss von 1.0 auf 0.88 abnehmen.
 
-#### Leistungsmetriken
-
-Die **Precision (B)** startet bei etwa 0.5 und steigt kontinuierlich auf nahezu 1.0 in den letzten Epochen, was bedeutet, dass fast alle vom Modell erkannten Objekte korrekt sind. Der **Recall (B)** beginnt bei sehr niedrigen 0.1 und erreicht ebenfalls Werte um 0.95-1.0, was zeigt, dass das Modell am Ende nahezu alle tatsächlich vorhandenen Objekte erkennt. Die **mAP50** (mean Average Precision bei IoU-Schwelle 0.5) steigt von 0.5 auf perfekte 1.0, während mAP50-95 (durchschnittlich über IoU-Schwellen 0.5-0.95) von 0.05 auf etwa 0.95 zunimmt, was auf eine sehr präzise Objektlokalisation hindeutet.
-
-​
-
-#### Konvergenz und Stabilität
-
-Das Training zeigt nach etwa 40-50 Epochen eine deutliche **Konvergenz**, wobei die geglätteten Kurven (orange) flacher werden und die Metriken stabile Plateaus erreichen. Die starken Schwankungen in den frühen Epochen (besonders bei val/cls_loss und val/dfl_loss) deuten auf  initiale Anpassungsprozesse hin, die sich später stabilisieren. Die nahezu identischen Verläufe von Trainings- und Validierungsverlusten zeigen, dass kein signifikantes Overfitting vorliegt.

@@ -32,8 +32,8 @@ if train_percent < .01 or train_percent > 0.99:
 val_percent = 1 - train_percent
 
 # Define path to input dataset 
-input_image_path = os.path.join(data_path,'images')
-input_label_path = os.path.join(data_path,'labels')
+input_image_path = os.path.join(data_path, 'images')
+input_label_path = os.path.join(data_path, 'labels')
 
 # Define paths to image and annotation folders
 cwd = os.getcwd()

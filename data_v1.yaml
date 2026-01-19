@@ -4,4 +4,4 @@ val: validation\images
 
 nc: 2
 
-names: ["dynamic_buoy", "outer_buoy"]
+names: ["EndBoje", "KursBoje"]
