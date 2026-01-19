@@ -1,2 +1,2 @@
-KursBoje
-EndBoje
+dynamic_buoy
+outer_buoy
